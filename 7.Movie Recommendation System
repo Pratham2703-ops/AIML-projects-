@@ -1,1 +1,142 @@
+import numpy as np
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
+MOVIES = [
+    {"title": "The Matrix", "genres": "Action Sci-Fi",
+     "overview": "A hacker discovers reality is a simulation and joins a rebellion against machines."},
+    {"title": "Inception", "genres": "Action Sci-Fi Thriller",
+     "overview": "A thief who steals secrets through dream-sharing takes on a job to plant an idea instead."},
+    {"title": "Interstellar", "genres": "Adventure Drama Sci-Fi",
+     "overview": "Explorers travel through a wormhole in space to save humanity from a dying Earth."},
+    {"title": "The Dark Knight", "genres": "Action Crime Drama",
+     "overview": "Batman faces the Joker, a criminal mastermind who wants to plunge Gotham into anarchy."},
+    {"title": "Memento", "genres": "Mystery Thriller",
+     "overview": "A man with short-term memory loss hunts for his wife's killer using notes and tattoos."},
+    {"title": "The Prestige", "genres": "Drama Mystery Thriller",
+     "overview": "Two rival magicians engage in a competitive battle to create the ultimate illusion."},
+    {"title": "Toy Story", "genres": "Animation Adventure Comedy Family",
+     "overview": "A cowboy doll feels threatened when a new spaceman toy replaces him as a kid's top toy."},
+    {"title": "Finding Nemo", "genres": "Animation Adventure Comedy Family",
+     "overview": "A clownfish searches the ocean for his lost son, meeting friends along the way."},
+    {"title": "Up", "genres": "Animation Adventure Comedy Family",
+     "overview": "An elderly widower ties balloons to his house to fly to South America with a young stowaway."},
+    {"title": "The Notebook", "genres": "Drama Romance",
+     "overview": "A poor young man falls in love with a rich young woman in the 1940s American South."},
+    {"title": "La La Land", "genres": "Comedy Drama Music Romance",
+     "overview": "A jazz musician and an aspiring actress fall in love while pursuing their dreams in LA."},
+    {"title": "Pride and Prejudice", "genres": "Drama Romance",
+     "overview": "Sparks fly between a young woman and a wealthy landowner in Georgian England."},
+    {"title": "John Wick", "genres": "Action Crime Thriller",
+     "overview": "An ex-hitman comes out of retirement to track down the gangsters who took everything from him."},
+    {"title": "Mad Max: Fury Road", "genres": "Action Adventure Sci-Fi",
+     "overview": "A woman rebels against a tyrannical ruler in post-apocalyptic Australia with the help of a drifter."},
+    {"title": "Gladiator", "genres": "Action Adventure Drama",
+     "overview": "A betrayed Roman general fights his way back as a gladiator to seek revenge."},
+    {"title": "The Conjuring", "genres": "Horror Mystery Thriller",
+     "overview": "Paranormal investigators help a family terrorized by a dark presence in their farmhouse."},
+    {"title": "Get Out", "genres": "Horror Mystery Thriller",
+     "overview": "A young Black man uncovers a disturbing secret when he meets his white girlfriend's family."},
+    {"title": "A Quiet Place", "genres": "Drama Horror Sci-Fi",
+     "overview": "A family must live in silence to avoid attracting monsters that hunt by sound."},
+    {"title": "The Grand Budapest Hotel", "genres": "Adventure Comedy Drama",
+     "overview": "A legendary concierge and his protege become embroiled in a theft and murder mystery."},
+    {"title": "Superbad", "genres": "Comedy",
+     "overview": "Two co-dependent high school seniors are forced to deal with separation before college."},
+]
+
+df = pd.DataFrame(MOVIES)
+df["combined_features"] = df["genres"] + " " + df["overview"]
+
+
+
+class ContentBasedRecommender:
+    def __init__(self, dataframe: pd.DataFrame):
+        self.df = dataframe.reset_index(drop=True)
+        self.vectorizer = TfidfVectorizer(stop_words="english")
+        self.tfidf_matrix = self.vectorizer.fit_transform(self.df["combined_features"])
+        self.similarity_matrix = cosine_similarity(self.tfidf_matrix)
+        self.title_to_index = {
+            title.lower(): idx for idx, title in enumerate(self.df["title"])
+        }
+
+    def recommend(self, title: str, top_n: int = 5):
+        key = title.lower()
+        if key not in self.title_to_index:
+            close_matches = [t for t in self.df["title"] if key in t.lower()]
+            if close_matches:
+                raise ValueError(
+                    f"'{title}' not found. Did you mean: {', '.join(close_matches)}?"
+                )
+            raise ValueError(f"'{title}' not found in catalog.")
+
+        idx = self.title_to_index[key]
+        scores = list(enumerate(self.similarity_matrix[idx]))
+        scores = sorted(scores, key=lambda x: x[1], reverse=True)
+        scores = [s for s in scores if s[0] != idx][:top_n]  # exclude the movie itself
+
+        return [
+            {"title": self.df.iloc[i]["title"], "similarity": round(float(score), 3)}
+            for i, score in scores
+        ]
+
+
+
+RATINGS = pd.DataFrame(
+    {
+        "The Matrix":        [5, 4, 0, 1, 5],
+        "Inception":         [5, 5, 1, 0, 4],
+        "Interstellar":      [4, 5, 0, 0, 5],
+        "The Notebook":      [1, 0, 5, 4, 0],
+        "La La Land":        [0, 1, 4, 5, 1],
+        "Toy Story":         [3, 2, 4, 4, 2],
+        "John Wick":         [5, 3, 0, 1, 4],
+        "The Conjuring":     [2, 1, 2, 1, 3],
+    },
+    index=["Alice", "Bob", "Carol", "Dave", "Eve"],
+)
+
+
+class CollaborativeRecommender:
+    def __init__(self, ratings: pd.DataFrame):
+        self.ratings = ratings
+        self.user_similarity = pd.DataFrame(
+            cosine_similarity(ratings),
+            index=ratings.index,
+            columns=ratings.index,
+        )
+
+    def recommend(self, user: str, top_n: int = 3):
+        if user not in self.ratings.index:
+            raise ValueError(f"Unknown user '{user}'. Known users: {list(self.ratings.index)}")
+
+        
+        sims = self.user_similarity[user].drop(user)
+        weighted_scores = self.ratings.drop(index=user).T.dot(sims) / sims.sum()
+
+        
+        unrated = self.ratings.loc[user] == 0
+        weighted_scores = weighted_scores[unrated].sort_values(ascending=False)
+
+        return [
+            {"title": title, "predicted_score": round(float(score), 2)}
+            for title, score in weighted_scores.head(top_n).items()
+        ]
+
+
+
+if __name__ == "__main__":
+    print("=== Content-based recommendations ===")
+    content_recommender = ContentBasedRecommender(df)
+    seed_movie = "Inception"
+    print(f"Because you liked '{seed_movie}':")
+    for rec in content_recommender.recommend(seed_movie, top_n=5):
+        print(f"  {rec['title']:<28} (similarity: {rec['similarity']})")
+
+    print("\n=== Collaborative filtering recommendations ===")
+    collab_recommender = CollaborativeRecommender(RATINGS)
+    seed_user = "Dave"
+    print(f"Recommended for {seed_user} (based on similar users' ratings):")
+    for rec in collab_recommender.recommend(seed_user, top_n=3):
+        print(f"  {rec['title']:<28} (predicted score: {rec['predicted_score']})")
