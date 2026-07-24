@@ -1,1 +1,204 @@
+import random
+import math
+from collections import deque, namedtuple
 
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import matplotlib.pyplot as plt
+
+import gymnasium as gym
+
+ENV_NAME = "CartPole-v1"
+NUM_EPISODES = 400
+GAMMA = 0.99
+LR = 1e-3
+BATCH_SIZE = 64
+REPLAY_CAPACITY = 20_000
+MIN_REPLAY_SIZE = 1_000
+TARGET_UPDATE_EVERY = 10          
+EPS_START = 1.0
+EPS_END = 0.02
+EPS_DECAY_STEPS = 10_000         
+SEED = 42
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+
+Transition = namedtuple("Transition", ("state", "action", "reward", "next_state", "done"))
+
+
+
+class ReplayBuffer:
+    def __init__(self, capacity):
+        self.buffer = deque(maxlen=capacity)
+
+    def push(self, *args):
+        self.buffer.append(Transition(*args))
+
+    def sample(self, batch_size):
+        batch = random.sample(self.buffer, batch_size)
+        return Transition(*zip(*batch))
+
+    def __len__(self):
+        return len(self.buffer)
+
+
+
+class QNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden=128):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, action_dim),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+
+def epsilon_by_step(step):
+    return EPS_END + (EPS_START - EPS_END) * math.exp(-1.0 * step / EPS_DECAY_STEPS)
+
+
+def select_action(policy_net, state, epsilon, action_dim):
+    if random.random() < epsilon:
+        return random.randrange(action_dim)
+    with torch.no_grad():
+        state_t = torch.as_tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+        q_values = policy_net(state_t)
+        return int(torch.argmax(q_values, dim=1).item())
+
+
+
+def optimize(policy_net, target_net, optimizer, buffer, batch_size):
+    if len(buffer) < max(batch_size, MIN_REPLAY_SIZE):
+        return None
+
+    batch = buffer.sample(batch_size)
+
+    states = torch.as_tensor(np.array(batch.state), dtype=torch.float32, device=device)
+    actions = torch.as_tensor(batch.action, dtype=torch.int64, device=device).unsqueeze(1)
+    rewards = torch.as_tensor(batch.reward, dtype=torch.float32, device=device).unsqueeze(1)
+    next_states = torch.as_tensor(np.array(batch.next_state), dtype=torch.float32, device=device)
+    dones = torch.as_tensor(batch.done, dtype=torch.float32, device=device).unsqueeze(1)
+
+    q_values = policy_net(states).gather(1, actions)
+
+    with torch.no_grad():
+        next_q_values = target_net(next_states).max(1, keepdim=True)[0]
+        target_q = rewards + GAMMA * next_q_values * (1 - dones)
+
+    loss = nn.functional.smooth_l1_loss(q_values, target_q)
+
+    optimizer.zero_grad()
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 10.0)
+    optimizer.step()
+
+    return loss.item()
+
+
+
+def train():
+    env = gym.make(ENV_NAME)
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.n
+
+    policy_net = QNetwork(state_dim, action_dim).to(device)
+    target_net = QNetwork(state_dim, action_dim).to(device)
+    target_net.load_state_dict(policy_net.state_dict())
+    target_net.eval()
+
+    optimizer = optim.Adam(policy_net.parameters(), lr=LR)
+    buffer = ReplayBuffer(REPLAY_CAPACITY)
+
+    episode_rewards = []
+    global_step = 0
+
+    for episode in range(1, NUM_EPISODES + 1):
+        state, _ = env.reset(seed=SEED + episode)
+        episode_reward = 0.0
+        done = False
+
+        while not done:
+            epsilon = epsilon_by_step(global_step)
+            action = select_action(policy_net, state, epsilon, action_dim)
+
+            next_state, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
+
+            buffer.push(state, action, reward, next_state, float(done))
+
+            state = next_state
+            episode_reward += reward
+            global_step += 1
+
+            optimize(policy_net, target_net, optimizer, buffer, BATCH_SIZE)
+
+        episode_rewards.append(episode_reward)
+
+        if episode % TARGET_UPDATE_EVERY == 0:
+            target_net.load_state_dict(policy_net.state_dict())
+
+        if episode % 20 == 0:
+            avg_last_20 = np.mean(episode_rewards[-20:])
+            print(f"Episode {episode:4d} | reward: {episode_reward:6.1f} | "
+                  f"avg(last 20): {avg_last_20:6.1f} | epsilon: {epsilon:.3f}")
+
+        # CartPole-v1 is considered solved at avg reward >= 475 over 100 episodes
+        if len(episode_rewards) >= 100 and np.mean(episode_rewards[-100:]) >= 475:
+            print(f"Solved at episode {episode}! Average reward (last 100): "
+                  f"{np.mean(episode_rewards[-100:]):.1f}")
+            break
+
+    env.close()
+    return policy_net, episode_rewards
+
+
+def plot_rewards(episode_rewards):
+    plt.figure(figsize=(9, 5))
+    plt.plot(episode_rewards, label="Episode reward", alpha=0.4)
+    if len(episode_rewards) >= 20:
+        moving_avg = np.convolve(episode_rewards, np.ones(20) / 20, mode="valid")
+        plt.plot(range(19, len(episode_rewards)), moving_avg, label="Moving avg (20 ep)", linewidth=2)
+    plt.xlabel("Episode")
+    plt.ylabel("Total reward")
+    plt.title("CartPole-v1 — DQN training progress")
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig("cartpole_training_curve.png", dpi=150)
+    plt.show()
+
+
+def watch_trained_agent(policy_net, episodes=3):
+    """Run a few episodes with rendering (only useful locally; Colab has no display
+    by default — skip this or use gym's rgb_array mode + save video instead)."""
+    env = gym.make(ENV_NAME, render_mode="rgb_array")
+    for ep in range(episodes):
+        state, _ = env.reset()
+        done, total_reward = False, 0.0
+        while not done:
+            with torch.no_grad():
+                state_t = torch.as_tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+                action = int(torch.argmax(policy_net(state_t), dim=1).item())
+            state, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
+            total_reward += reward
+        print(f"Eval episode {ep + 1}: reward = {total_reward}")
+    env.close()
+
+
+if __name__ == "__main__":
+    trained_policy, rewards_history = train()
+    plot_rewards(rewards_history)
+    watch_trained_agent(trained_policy)
