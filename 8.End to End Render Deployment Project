@@ -1,1 +1,210 @@
+"""
+================================================================================
+END-TO-END RENDER & DEPLOYMENT FOR GOOGLE COLAB
+================================================================================
+Fixed version that properly installs swig + Box2D before gymnasium.
 
+Paste this ENTIRE code into ONE Colab cell and run it.
+"""
+
+# =============================================================================
+# STEP 0: INSTALL SYSTEM DEPENDENCIES FIRST (CRITICAL FIX)
+# =============================================================================
+import subprocess, sys, os, time, warnings
+warnings.filterwarnings('ignore')
+
+print("Step 0: Installing system dependencies...")
+# swig is required to compile Box2D
+subprocess.check_call(["apt-get", "update", "-qq"])
+subprocess.check_call(["apt-get", "install", "-y", "-qq", "swig", "build-essential"])
+print("System deps installed!")
+
+print("Step 1: Installing Python packages...")
+# Install in correct order: Box2D deps first, then gymnasium[box2d]
+for pkg in ["pyngrok", "numpy", "matplotlib", "torch", "stable-baselines3"]:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", pkg])
+
+# Install gymnasium with box2d extras (this compiles Box2D using swig)
+subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "gymnasium[box2d]"])
+
+# Install streamlit last
+subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "streamlit"])
+print("All Python packages installed!")
+
+# =============================================================================
+# STEP 2: IMPORTS & CONFIG
+# =============================================================================
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import gymnasium as gym
+from stable_baselines3 import DQN
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv
+import torch
+
+FRAMEWORK = "streamlit"
+TUNNEL    = "ngrok"          # "ngrok" or "colab"
+PORT      = 8501
+NGROK_TOKEN = ""             # <-- PASTE YOUR NGROK AUTHTOKEN HERE
+
+print("Config:", FRAMEWORK, "+", TUNNEL, "on port", PORT)
+
+# =============================================================================
+# STEP 3: TRAIN / LOAD MODEL
+# =============================================================================
+MODEL_PATH = "/content/lunar_lander_model.zip"
+
+def get_or_train_model():
+    if os.path.exists(MODEL_PATH):
+        print("Loading saved model...")
+        env = DummyVecEnv([lambda: Monitor(gym.make("LunarLander-v3"))])
+        return DQN.load(MODEL_PATH, env=env)
+
+    print("Training new agent (~5-10 min)...")
+    env = DummyVecEnv([lambda: Monitor(gym.make("LunarLander-v3"))])
+    model = DQN("MlpPolicy", env,
+        learning_rate=1e-3, buffer_size=100000, batch_size=128,
+        gamma=0.99, exploration_fraction=0.3, exploration_final_eps=0.05,
+        verbose=0, device="cuda" if torch.cuda.is_available() else "cpu")
+    model.learn(total_timesteps=200000, progress_bar=True)
+    model.save(MODEL_PATH)
+    print("Model saved!")
+    return model
+
+model = get_or_train_model()
+print("Model ready!")
+
+# =============================================================================
+# STEP 4: WRITE WEB APP FILE
+# =============================================================================
+app_code = """import streamlit as st
+import numpy as np
+import gymnasium as gym
+from stable_baselines3 import DQN
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+st.set_page_config(page_title='Lunar Lander RL', page_icon='🚀', layout='wide')
+
+@st.cache_resource
+def load_model():
+    return DQN.load('/content/lunar_lander_model.zip')
+
+model = load_model()
+
+st.title('🚀 Lunar Lander RL Agent')
+st.markdown('Trained with **Deep Q-Network (DQN)** on LunarLander-v3')
+
+st.sidebar.header('Controls')
+n_ep = st.sidebar.slider('Episodes', 1, 20, 5)
+max_steps = st.sidebar.slider('Max Steps', 100, 2000, 1000)
+seed = st.sidebar.number_input('Seed', 0, 1000, 42)
+
+if st.sidebar.button('▶️ Run Simulation', type='primary'):
+    bar = st.progress(0)
+    status = st.empty()
+    env = gym.make('LunarLander-v3', render_mode='rgb_array')
+    rewards = []
+    frames = []
+
+    for ep in range(n_ep):
+        obs, _ = env.reset(seed=seed + ep)
+        total = 0
+        done = False
+        step = 0
+        ep_frames = []
+        while not done and step < max_steps:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, term, trunc, _ = env.step(action)
+            total += reward
+            done = term or trunc
+            if step % 4 == 0:
+                ep_frames.append(env.render())
+            step += 1
+        rewards.append(total)
+        if ep == 0:
+            frames = ep_frames
+        bar.progress((ep + 1) / n_ep)
+        status.text(f'Episode {ep+1}/{n_ep} | Reward: {total:.2f}')
+    env.close()
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric('Mean Reward', f'{np.mean(rewards):.2f}')
+    c2.metric('Best Reward', f'{np.max(rewards):.2f}')
+    c3.metric('Success Rate', f'{sum(1 for r in rewards if r > 200)/len(rewards)*100:.0f}%')
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    colors = ['green' if r > 200 else 'orange' if r > 0 else 'red' for r in rewards]
+    ax.bar(range(1, len(rewards)+1), rewards, color=colors, alpha=0.7, edgecolor='black')
+    ax.axhline(y=200, color='green', linestyle='--', label='Success')
+    ax.axhline(y=0, color='red', linestyle='--', label='Crash')
+    ax.set_xlabel('Episode'); ax.set_ylabel('Reward'); ax.set_title('Results')
+    ax.legend(); ax.grid(True, alpha=0.3)
+    st.pyplot(fig)
+
+    if frames:
+        st.subheader('Replay Episode 1')
+        idx = st.slider('Frame', 0, len(frames)-1, 0)
+        st.image(frames[idx], caption=f'Step {idx*4}', use_container_width=True)
+
+with st.expander('Model Info'):
+    st.code('DQN MlpPolicy | Net: [256,256,128] | LR: 1e-3 | Buffer: 100k | Gamma: 0.99')
+
+st.markdown('---')
+st.caption('Deployed from Google Colab | Streamlit + Stable-Baselines3')
+"""
+
+with open("/content/app.py", "w") as f:
+    f.write(app_code)
+print("App file written to /content/app.py")
+
+# =============================================================================
+# STEP 5: DEPLOY WITH TUNNEL
+# =============================================================================
+
+def deploy_ngrok():
+    from pyngrok import ngrok
+    if NGROK_TOKEN:
+        ngrok.set_auth_token(NGROK_TOKEN)
+    ngrok.kill()
+    time.sleep(1)
+    url = ngrok.connect(PORT, "http")
+    print("")
+    print("=" * 60)
+    print("PUBLIC URL:", url)
+    print("=" * 60)
+    print("")
+    cmd = "streamlit run /content/app.py --server.port " + str(PORT) + " --server.address 0.0.0.0 --browser.gatherUsageStats false"
+    os.system(cmd)
+
+def deploy_colab():
+    from google.colab import output
+    cmd = "streamlit run /content/app.py --server.port " + str(PORT) + " --server.address 0.0.0.0 --browser.gatherUsageStats false &"
+    os.system(cmd)
+    time.sleep(5)
+    url = output.eval_js("google.colab.kernel.proxyPort(" + str(PORT) + ")")
+    print("")
+    print("=" * 60)
+    print("COLAB URL:", url)
+    print("=" * 60)
+    print("(Session-only link)")
+    while True:
+        time.sleep(60)
+
+print("")
+print("=" * 60)
+print("DEPLOYING...")
+print("=" * 60)
+
+if TUNNEL == "ngrok":
+    if not NGROK_TOKEN:
+        print("")
+        print("WARNING: No ngrok token! Get one free at: https://dashboard.ngrok.com")
+        print("Or change TUNNEL = 'colab' for native proxy")
+        print("")
+    deploy_ngrok()
+else:
+    deploy_colab()
