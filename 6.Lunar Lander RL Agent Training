@@ -1,7 +1,4 @@
-# ═══════════════════════════════════════════════════════════════
 # LUNAR LANDER RL - SINGLE CELL VERSION FOR GOOGLE COLAB
-# ═══════════════════════════════════════════════════════════════
-
 # Step 1: Install dependencies
 !pip install -q gymnasium[box2d] stable-baselines3[extra] matplotlib
 
