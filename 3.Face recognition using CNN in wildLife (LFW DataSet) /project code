@@ -1,0 +1,218 @@
+!pip install opencv-python
+
+import cv2
+import numpy as np
+from google.colab.patches import cv2_imshow
+
+from IPython.display import Javascript, display
+from google.colab.output import eval_js
+from base64 import b64decode
+
+def take_photo(filename='photo.jpg', quality=0.8):
+
+    js = Javascript('''
+    async function takePhoto(quality) {
+      const div = document.createElement('div');
+      const capture = document.createElement('button');
+      capture.textContent = 'Capture';
+      div.appendChild(capture);
+
+      const video = document.createElement('video');
+      video.style.display = 'block';
+
+      const stream = await navigator.mediaDevices.getUserMedia({video: true});
+
+      document.body.appendChild(div);
+      div.appendChild(video);
+
+      video.srcObject = stream;
+      await video.play();
+
+      google.colab.output.setIframeHeight(document.body.scrollHeight, true);
+
+      await new Promise((resolve) => capture.onclick = resolve);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      canvas.getContext('2d').drawImage(video,0,0);
+
+      stream.getTracks().forEach(track => track.stop());
+
+      div.remove();
+
+      return canvas.toDataURL('image/jpeg', quality);
+    }
+    ''')
+
+    display(js)
+
+    data = eval_js('takePhoto({})'.format(quality))
+
+    binary = b64decode(data.split(',')[1])
+
+    with open(filename,'wb') as f:
+        f.write(binary)
+
+    return filename
+
+image_file = take_photo()
+
+print("Image Saved:", image_file)
+
+face_detector = cv2.CascadeClassifier(
+    cv2.data.haarcascades +
+    "haarcascade_frontalface_default.xml"
+)
+
+image = cv2.imread("photo.jpg")
+
+gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+faces = face_detector.detectMultiScale(
+    gray,
+    scaleFactor=1.3,
+    minNeighbors=5
+)
+
+for (x,y,w,h) in faces:
+
+    cv2.rectangle(
+        image,
+        (x,y),
+        (x+w,y+h),
+        (0,255,0),
+        2
+    )
+
+    cv2.putText(
+        image,
+        "Face",
+        (x,y-10),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (0,255,0),
+        2
+    )
+
+cv2_imshow(image)
+
+print("Faces Detected:", len(faces))
+
+!pip install opencv-python
+
+import cv2
+import numpy as np
+from google.colab.patches import cv2_imshow
+
+from IPython.display import Javascript, display
+from google.colab.output import eval_js
+from base64 import b64decode
+
+def take_photo(filename='photo.jpg', quality=0.8):
+
+    js = Javascript('''
+    async function takePhoto(quality) {
+      const div = document.createElement('div');
+      const capture = document.createElement('button');
+      capture.textContent = 'Capture';
+      div.appendChild(capture);
+
+      const video = document.createElement('video');
+      video.style.display = 'block';
+
+      const stream = await navigator.mediaDevices.getUserMedia({video:true});
+
+      document.body.appendChild(div);
+      div.appendChild(video);
+
+      video.srcObject = stream;
+      await video.play();
+
+      google.colab.output.setIframeHeight(document.body.scrollHeight,true);
+
+      await new Promise((resolve)=>capture.onclick=resolve);
+
+      const canvas=document.createElement('canvas');
+      canvas.width=video.videoWidth;
+      canvas.height=video.videoHeight;
+
+      canvas.getContext('2d').drawImage(video,0,0);
+
+      stream.getTracks().forEach(track=>track.stop());
+
+      div.remove();
+
+      return canvas.toDataURL('image/jpeg',quality);
+    }
+    ''')
+
+    display(js)
+
+    data = eval_js('takePhoto({})'.format(quality))
+
+    binary = b64decode(data.split(',')[1])
+
+    with open(filename,'wb') as f:
+        f.write(binary)
+
+    return filename
+
+image_file = take_photo()
+
+print("Image Saved Successfully:", image_file)
+
+face_detector = cv2.CascadeClassifier(
+    cv2.data.haarcascades +
+    "haarcascade_frontalface_default.xml"
+)
+
+# Check whether the cascade loaded successfully
+if face_detector.empty():
+    print("Error: Haar Cascade file not loaded.")
+else:
+    print("Haar Cascade loaded successfully.")
+
+image = cv2.imread("photo.jpg")
+
+if image is None:
+    print("Error: Image not found.")
+else:
+    print("Image Loaded Successfully.")
+
+gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+# Improve image quality
+gray = cv2.equalizeHist(gray)
+
+faces = face_detector.detectMultiScale(
+    gray,
+    scaleFactor=1.1,
+    minNeighbors=3,
+    minSize=(30,30)
+)
+
+print("Number of Faces Detected:", len(faces))
+
+for (x, y, w, h) in faces:
+
+    cv2.rectangle(
+        image,
+        (x, y),
+        (x+w, y+h),
+        (0,255,0),
+        2
+    )
+
+    cv2.putText(
+        image,
+        "Face Detected",
+        (x, y-10),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0,255,0),
+        2
+    )
+
+cv2_imshow(image)
