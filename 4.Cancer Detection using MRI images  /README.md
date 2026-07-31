@@ -92,6 +92,7 @@ Notes
 The model is trained on RGB images (3 channels) despite ultrasound being grayscale — ensure your dataset images are converted to RGB if needed.
 The code runs model.fit() twice (20 total epochs). You may want to adjust this based on convergence.
 For better performance, consider adding Dropout, Batch Normalization, or using Transfer Learning (e.g., VGG16, ResNet50).
+
 Potential Improvements
 [ ] Add data augmentation (rotation, zoom, flip)
 [ ] Implement early stopping and learning rate scheduling
