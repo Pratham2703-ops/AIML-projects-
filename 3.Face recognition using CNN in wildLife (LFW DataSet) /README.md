@@ -1,4 +1,5 @@
 Face Detection with OpenCV
+
 A simple face detection application using OpenCV's Haar Cascade classifier. This project captures images via webcam and detects faces in real-time, drawing bounding boxes around detected faces.
 
 Features
@@ -52,11 +53,11 @@ plain
 Original Image → Grayscale Conversion → Histogram Equalization → 
 Haar Cascade Detection → Draw Bounding Boxes → Display Result
 3. Detection Parameters
-Table
-Parameter	Value	Description
-scaleFactor	1.1	How much the image size is reduced at each scale
-minNeighbors	3	Minimum number of rectangles to retain a detection
-minSize	(30,30)	Minimum possible object size
+| Parameter      | Value   | Description                                        |
+| -------------- | ------- | -------------------------------------------------- |
+| `scaleFactor`  | 1.1     | How much the image size is reduced at each scale   |
+| `minNeighbors` | 3       | Minimum number of rectangles to retain a detection |
+| `minSize`      | (30,30) | Minimum possible object size                       |
 
 Code Explanation
 Key Components
@@ -92,12 +93,13 @@ The improved version includes checks for:
  
 Customization
 Adjust Detection Sensitivity
-Table
-Goal	Action
-Detect more faces	Lower minNeighbors to 2-3
-Reduce false positives	Increase minNeighbors to 5-6
-Detect smaller faces	Lower minSize or scaleFactor
-Detect only large faces	Increase minSize
+| Goal                    | Action                           |
+| ----------------------- | -------------------------------- |
+| Detect more faces       | Lower `minNeighbors` to 2-3      |
+| Reduce false positives  | Increase `minNeighbors` to 5-6   |
+| Detect smaller faces    | Lower `minSize` or `scaleFactor` |
+| Detect only large faces | Increase `minSize`               |
+
 Change Visual Style
 Python
 # Different colors (BGR format)
@@ -110,26 +112,31 @@ cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 3)  # Thicker
 
 # Change font size
 cv2.putText(image, "Face", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 2)
+
 Limitations
 Requires frontal face orientation (profile detection needs different cascade)
 Performance depends on lighting conditions
 May produce false positives with face-like patterns
 Webcam access requires browser permissions (Colab/Jupyter only)
+
 Troubleshooting
-Table
-Issue	Solution
-"Haar Cascade file not loaded"	Reinstall opencv-python: pip install --force-reinstall opencv-python
-"Image not found"	Ensure webcam permission is granted
-No faces detected	Improve lighting, face the camera directly
-Too many false positives	Increase minNeighbors value
+| Issue                          | Solution                                                               |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| "Haar Cascade file not loaded" | Reinstall opencv-python: `pip install --force-reinstall opencv-python` |
+| "Image not found"              | Ensure webcam permission is granted                                    |
+| No faces detected              | Improve lighting, face the camera directly                             |
+| Too many false positives       | Increase `minNeighbors` value                                          |
+
 Future Enhancements
 [ ] Add support for multiple face detection algorithms (DNN, MTCNN)
 [ ] Implement real-time video stream processing
 [ ] Add face recognition capabilities
 [ ] Support for side-profile face detection
 [ ] Save detected faces as separate cropped images
+
 License
 This project is open-source. Feel free to use and modify as needed.
+
 Acknowledgments
 OpenCV Library: https://opencv.org/
-Haar Cascade Classifiers: Pre-trained models by OpenCV community
+Haar Cascade Classifiers: Pre-trained models by OpenCV community 
