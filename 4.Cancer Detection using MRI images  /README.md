@@ -1,4 +1,4 @@
-Breast Ultrasound Image Classification (BUSI Dataset)
+Cancer detection using MRI images 
 
 Overview
 This project implements a Convolutional Neural Network (CNN) using TensorFlow/Keras to classify breast ultrasound images from the BUSI (Breast Ultrasound Images) dataset. The model categorizes images into three classes: normal, benign, and malignant.
