@@ -65,6 +65,7 @@ Displays dataset dimensions (rows × columns)
 Shows feature types and missing value overview via df.info()
 Analyzes target variable distribution (income counts)
 Calculates class imbalance percentages
+
 Task 2: Data Cleaning
 Detects hidden missing values: Scans all object-type columns for '?' entries
 Converts to NaN: Replaces '?' with standard np.nan values
@@ -73,15 +74,18 @@ workclass
 occupation
 native.country / native-country
 Verification: Confirms zero remaining missing values
+
 Task 3: Feature Engineering
 Target Encoding: Converts income to binary (0 = <=50K, 1 = >50K)
 Redundancy Removal: Drops text education column (keeps education.num / education-num)
 Categorical Encoding: Label-encodes all remaining object-type features to numeric values
+
 Task 4: Model Building
 Features (X): All columns except income
 Target (y): income column
 Train/Test Split: 80% training, 20% testing (stratified, random_state=42)
 Feature Scaling: StandardScaler applied to all features
+
 Task 5: Performance Evaluation
 Evaluates each model using:
 Accuracy — Overall correctness
