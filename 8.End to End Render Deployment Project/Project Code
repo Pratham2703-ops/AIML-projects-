@@ -206,5 +206,6 @@ if TUNNEL == "ngrok":
         print("Or change TUNNEL = 'colab' for native proxy")
         print("")
     deploy_ngrok()
-else:
+else
     deploy_colab()
+
